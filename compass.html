@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Compass Angles: N, E, S, W</title>
+<style>
+:root{--bg:#FFF6E5;--card:#fff;--text:#1B2A41;--muted:#4a5d7a;--N:#FF7A30;--E:#1FA6A0;--S:#FFC83D;--W:#5B6CFF;--line:#d9cdb8;--led-off:#3a2a2a;--led-on:#ff3b3b;
+ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121c2e;--card:#1d2b44;--text:#f4f1ea;--muted:#b6c3da;--line:#3b4c6b}}
+:root[data-theme="dark"]{--bg:#121c2e;--card:#1d2b44;--text:#f4f1ea;--muted:#b6c3da;--line:#3b4c6b}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Trebuchet MS","Segoe UI",Arial,sans-serif;min-height:100%}
+main{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:clamp(24px,5vw,34px);margin:4px 0 4px}
+.sub{color:var(--muted);margin:0 0 14px;font-size:17px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:18px;padding:14px;box-shadow:0 2px 0 var(--line)}
+svg{width:100%;max-width:360px;display:block;margin:0 auto}
+.readout{display:flex;align-items:center;justify-content:center;gap:16px;margin:8px 0}
+.deg{font-size:34px;font-weight:700}
+.led{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;width:110px;background:#111;padding:8px;border-radius:12px}
+.led i{aspect-ratio:1;border-radius:50%;background:var(--led-off)}
+.led i.on{background:var(--led-on);box-shadow:0 0 8px var(--led-on)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+button{font:inherit;font-weight:700;font-size:16px;padding:10px 14px;border:0;border-radius:12px;cursor:pointer;color:#1B2A41;background:#FFC83D;min-height:44px}
+button.N{background:var(--N)}button.E{background:var(--E)}button.S{background:var(--S)}button.W{background:var(--W);color:#fff}
+input[type=range]{width:100%;margin:10px 0 0;height:32px}
+.rule{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px;border-radius:12px;margin-bottom:8px;border:3px solid transparent;font-size:16px;transition:opacity .2s}
+.rule b.k{padding:2px 8px;border-radius:8px;color:#1B2A41}
+.chip{padding:2px 8px;border-radius:8px;background:var(--bg);font-weight:700}
+.chip.ok{background:#bdeeb0;color:#14400c}.chip.no{background:#ffc4c4;color:#5a1010}
+.rule.active{border-color:var(--text);background:var(--bg)}
+.rule.skip{opacity:.4}
+.res{margin-left:auto;font-weight:700}
+.story{font-size:19px;line-height:1.4;min-height:84px}
+</style>
+</head>
+<body>
+<main>
+<h1>🧭 Which way am I facing?</h1>
+<p class="sub">The compass gives a number from 0 to 359. Watch how the micro:bit picks N, E, S or W!</p>
+<div class="grid">
+ <section class="card">
+  <svg id="dial" viewBox="0 0 360 360" role="img" aria-label="Compass dial showing North, East, South and West sectors with a moving needle"></svg>
+  <div class="readout"><div class="deg">angle = <span id="deg">0</span>°</div><div class="led" id="led" aria-label="micro:bit LED display"></div></div>
+  <input id="slide" type="range" min="0" max="359" value="0" aria-label="Angle">
+  <div class="controls">
+   <button id="play">⏸ Pause</button>
+   <button class="N" data-a="0">N 0°</button><button class="E" data-a="90">E 90°</button>
+   <button class="S" data-a="180">S 180°</button><button class="W" data-a="270">W 270°</button>
+   <button data-a="135">Edge 135°</button>
+  </div>
+ </section>
+ <section class="card">
+  <h2 style="margin:4px 0 10px">The code asks questions in order</h2>
+  <div id="rules"></div>
+  <p class="story" id="story"></p>
+ </section>
+</div>
+</main>
+<script>
+const CX=180,CY=180,R=150;
+const COL={N:'var(--N)',E:'var(--E)',S:'var(--S)',W:'var(--W)'};
+const NAME={N:'North',E:'East',S:'South',W:'West'};
+const LET={N:'10001110011010110011 10001',E:'11111100001111010000 11111',S:'01111100000111000001 11110',W:'10001100011010110101 01010'};
+const RULES=[{k:'E',t:[['≥',45,a=>a>=45],['≤',135,a=>a<=135]]},{k:'S',t:[['>',135,a=>a>135],['≤',225,a=>a<=225]]},{k:'W',t:[['>',225,a=>a>225],['≤',315,a=>a<=315]]}];
+const P=(d,r)=>[CX+r*Math.sin(d*Math.PI/180),CY-r*Math.cos(d*Math.PI/180)];
+const letterFor=a=>a>=45&&a<=135?'E':a>135&&a<=225?'S':a>225&&a<=315?'W':'N';
+const svg=document.getElementById('dial');let h='';
+[['N',315,45],['E',45,135],['S',135,225],['W',225,315]].forEach(([k,a,b])=>{const p1=P(a,R),p2=P(b,R);
+ h+=`<path id="sec${k}" d="M${CX} ${CY}L${p1[0]} ${p1[1]}A${R} ${R} 0 0 1 ${p2[0]} ${p2[1]}Z" fill="${COL[k]}" stroke="var(--card)" stroke-width="4" opacity=".3"/>`;
+ const m=P(k==='N'?0:k==='E'?90:k==='S'?180:270,R*.68);
+ h+=`<text x="${m[0]}" y="${m[1]+12}" text-anchor="middle" font-size="38" font-weight="700" fill="var(--text)">${k}</text>`;});
+[45,135,225,315].forEach(a=>{const p=P(a,R+17);h+=`<text x="${p[0]}" y="${p[1]+5}" text-anchor="middle" font-size="15" font-weight="700" fill="var(--muted)">${a}</text>`;});
+h+=`<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="var(--text)" stroke-width="4"/>
+<g id="needle"><polygon points="${CX-11},${CY} ${CX+11},${CY} ${CX},${CY-R+8}" fill="#E5484D" stroke="var(--text)" stroke-width="2"/>
+<polygon points="${CX-11},${CY} ${CX+11},${CY} ${CX},${CY+60}" fill="#8a97ad" stroke="var(--text)" stroke-width="2"/></g>
+<circle cx="${CX}" cy="${CY}" r="9" fill="var(--text)"/>`;
+svg.innerHTML=h;
+const led=document.getElementById('led');for(let i=0;i<25;i++)led.appendChild(document.createElement('i'));
+const rulesEl=document.getElementById('rules');
+let angle=0,playing=!window.matchMedia('(prefers-reduced-motion: reduce)').matches,last=0;
+function render(){
+ const a=Math.round(angle)%360,L=letterFor(a);
+ document.getElementById('needle').setAttribute('transform',`rotate(${a} ${CX} ${CY})`);
+ document.getElementById('deg').textContent=a;document.getElementById('slide').value=a;
+ ['N','E','S','W'].forEach(k=>document.getElementById('sec'+k).setAttribute('opacity',k===L?'1':'.3'));
+ const bits=LET[L].replace(/ /g,'');[...led.children].forEach((d,i)=>d.className=bits[i]==='1'?'on':'');
+ const mi=RULES.findIndex(r=>r.t.every(c=>c[2](a)));
+ let rh='';
+ RULES.forEach((r,i)=>{const st=mi===-1||i<mi?(i<(mi===-1?3:mi)?'':'skip'):i===mi?'active':'skip';
+  const cls=i===mi?'active':(mi!==-1&&i>mi?'skip':'');
+  rh+=`<div class="rule ${cls}"><b>${i?'else if':'if'}</b>`+r.t.map((c,j)=>`${j?'<b>and</b>':''}<span class="chip ${(mi!==-1&&i>mi)?'':c[2](a)?'ok':'no'}">angle ${c[0]} ${c[1]} ${(mi!==-1&&i>mi)?'':c[2](a)?'✓':'✗'}</span>`).join('')+`<span class="res"><b class="k" style="background:${COL[r.k]};${r.k==='W'?'color:#fff':''}">${r.k}</b></span></div>`;});
+ rh+=`<div class="rule ${mi===-1?'active':'skip'}"><b>else</b><span>North</span><span class="res"><b class="k" style="background:var(--N)">N</b></span></div>`;
+ rulesEl.innerHTML=rh;
+ const msg={E:`${a} is at least 45 <b>and</b> at most 135, so we show <b>E</b> for East!`,S:`${a} is more than 135 <b>and</b> at most 225, so we show <b>S</b> for South!`,W:`${a} is more than 225 <b>and</b> at most 315, so we show <b>W</b> for West!`,N:`${a} is not East, South or West… so it must be <b>N</b> for North!`};
+ document.getElementById('story').innerHTML=msg[L]+(a===135?' <i>(135 counts as East because the rule says “at most 135”.)</i>':'');
+}
+function tick(t){if(playing){angle=(angle+(t-last)*0.03)%360;render();}last=t;requestAnimationFrame(tick);}
+const pb=document.getElementById('play');
+function setPlay(v){playing=v;pb.textContent=v?'⏸ Pause':'▶ Play';}
+pb.onclick=()=>setPlay(!playing);
+document.getElementById('slide').oninput=e=>{setPlay(false);angle=+e.target.value;render();};
+document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{setPlay(false);angle=+b.dataset.a;render();});
+setPlay(playing);render();requestAnimationFrame(tick);
+</script>
+</body>
+</html>
